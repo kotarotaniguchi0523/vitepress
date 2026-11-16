@@ -449,7 +449,7 @@ By default, alert colors match GitHub's, with caution and danger both rendering 
 
 ## Syntax Highlighting in Code Blocks
 
-VitePress uses [Shiki](https://github.com/shikijs/shiki) to highlight language syntax in Markdown code blocks, using coloured text. Shiki supports a wide variety of programming languages. All you need to do is append a valid language alias to the beginning backticks for the code block:
+VitePress uses [`@pierre/highlights`](https://diffs.com/highlights) to highlight language syntax in Markdown code blocks, using coloured text. It has built-in lexers for a wide variety of programming languages. All you need to do is append a valid language alias to the beginning backticks for the code block:
 
 **Input**
 
@@ -489,7 +489,7 @@ export default {
 </ul>
 ```
 
-A [list of valid languages](https://shiki.style/languages) is available on Shiki's repository.
+A [list of valid languages](https://diffs.com/highlights) is available in the `@pierre/highlights` documentation. A language without a built-in lexer is rendered as plain text, and VitePress logs a warning. Custom TextMate grammars and TextMate themes are not supported.
 
 You may also customize syntax highlight theme, configure language aliases, and set custom language labels in app config. Please see [`markdown` options](../reference/site-config#markdown) for more details.
 
@@ -824,7 +824,7 @@ You can also specify the language inside the braces (`{}`) like this:
 
 This is helpful if source language cannot be inferred from your file extension. Only alphanumeric extensions are inferred, so files like `main.c++` or `scss.code-snippets` need the language spelled out this way.
 
-Anything after the language inside the braces is passed along to the code block as extra attributes — for example, `<<< @/snippets/snippet.ts{ts twoslash}` enables twoslash processing when [`@shikijs/vitepress-twoslash`](https://shiki.style/packages/vitepress#twoslash) is configured. Note that attributes may not contain square brackets.
+Anything after the language inside the braces is passed along to the code block as extra attributes — for example, `<<< @/snippets/snippet.ts{ts my-attr}` — where a transformer in [`markdown.codeTransformers`](../reference/site-config#markdown) can read them. Note that attributes may not contain square brackets.
 
 ## Code Groups
 

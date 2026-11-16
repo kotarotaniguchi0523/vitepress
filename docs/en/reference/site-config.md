@@ -622,7 +622,7 @@ When using the default theme, enabling this option will display each page's last
 
 - Type: `MarkdownOption`
 
-Configure Markdown parser options. VitePress uses [Markdown-it](https://github.com/markdown-it/markdown-it) as the parser, and [Shiki](https://github.com/shikijs/shiki) to highlight language syntax. Inside this option, you may pass various Markdown related options to fit your needs.
+Configure Markdown parser options. VitePress uses [Markdown-it](https://github.com/markdown-it/markdown-it) as the parser, and [`@pierre/highlights`](https://diffs.com/highlights) to highlight language syntax. A language without a built-in lexer is rendered as plain text with a warning, and custom TextMate grammars and themes are not supported. Inside this option, you may pass various Markdown related options to fit your needs.
 
 ```js
 export default {

@@ -29,15 +29,6 @@ import {
 } from '@mdit/plugin-tasklist'
 import { MarkdownItAsync, type MarkdownItAsyncOptions } from 'markdown-it-async'
 import mditCjkFriendly from 'markdown-it-cjk-friendly'
-import type {
-  BuiltinLanguage,
-  BuiltinTheme,
-  CodeToHastOptions,
-  Highlighter,
-  LanguageInput,
-  ShikiTransformer,
-  ThemeRegistrationAny
-} from 'shiki'
 import type { Logger } from 'vite'
 
 import type {
@@ -52,7 +43,12 @@ import {
   type ContainerOptions
 } from './plugins/containers'
 import { eagerFrontmatterInterpolationPlugin } from './plugins/eagerFrontmatterInterpolation'
-import { highlight as createHighlighter } from './plugins/highlight'
+import {
+  highlight as createHighlighter,
+  type CodeTransformer,
+  type ColorReplacements,
+  type ThemeOptions
+} from './plugins/highlight'
 import { imagePlugin, type Options as ImageOptions } from './plugins/image'
 import {
   includePlugin,
@@ -73,13 +69,15 @@ export type { Header } from '../shared'
 // not exported from @mdit/plugin-emoji, so derive it from the plugin signature
 type EmojiPluginOptions = NonNullable<Parameters<typeof emojiPlugin>[1]>
 
-export type ThemeOptions =
-  | ThemeRegistrationAny
-  | BuiltinTheme
-  | {
-      light: ThemeRegistrationAny | BuiltinTheme
-      dark: ThemeRegistrationAny | BuiltinTheme
-    }
+export type {
+  CodeTheme,
+  CodeTransformer,
+  CodeTransformerContext,
+  CodeTransformerOptions,
+  ColorReplacements,
+  ThemedToken,
+  ThemeOptions
+} from './plugins/highlight'
 
 // highlight is marked as any to avoid type conflicts with plugins expecting
 // regular markdown-it which has sync highlight function. Such plugins will fail
@@ -119,7 +117,8 @@ export interface MarkdownOptions extends MarkdownItAsyncOptions {
   /* ==================== Syntax Highlighting ==================== */
 
   /**
-   * Custom theme for syntax highlighting.
+   * Custom theme for syntax highlighting. Code blocks are highlighted with
+   * [`@pierre/highlights`](https://diffs.com/highlights).
    *
    * You can also pass an object with `light` and `dark` themes to support
    * dual themes.
@@ -127,17 +126,11 @@ export interface MarkdownOptions extends MarkdownItAsyncOptions {
    * @example { theme: 'github-dark' }
    * @example { theme: { light: 'github-light', dark: 'github-dark' } }
    *
-   * You can use an existing theme.
-   * @see https://shiki.style/themes
-   * Or add your own theme.
-   * @see https://shiki.style/guide/load-theme
+   * Use the name of a bundled theme, or pass a Zed-compatible theme object.
+   * TextMate themes are not supported.
+   * @see https://diffs.com/highlights
    */
   theme?: ThemeOptions
-  /**
-   * Custom languages for syntax highlighting or pre-load built-in languages.
-   * @see https://shiki.style/languages
-   */
-  languages?: (LanguageInput | BuiltinLanguage)[]
   /**
    * Custom language aliases for syntax highlighting.
    * Maps custom language names to existing languages.
@@ -159,29 +152,27 @@ export interface MarkdownOptions extends MarkdownItAsyncOptions {
    * print("Hello, World!")
    * ```
    * ````
-   *
-   * @see https://shiki.style/guide/load-lang#custom-language-aliases
    */
   languageAlias?: Record<string, string>
   /**
-   * Fallback language used when the specified language is not available.
+   * Fallback language used when the specified language has no built-in
+   * lexer. Such a block is rendered as plain text if this language has none
+   * either.
    */
   defaultHighlightLang?: string
   /**
-   * Transformers applied to code blocks.
-   * @see https://shiki.style/guide/transformers
+   * Transformers applied to code blocks. A transformer can change the code
+   * before it is highlighted (`preprocess`), the tokens of each line
+   * (`tokens`) and the HTML of the block (`postprocess`). There is no syntax
+   * tree, so the `root`, `pre`, `code`, `line` and `span` hooks of a Shiki
+   * transformer are rejected, and so are decorations.
    */
-  codeTransformers?: ShikiTransformer[]
+  codeTransformers?: CodeTransformer[]
   /**
    * Color replacements applied during syntax highlighting.
    * Accepts either a flat color map or per-theme replacements.
-   * @see https://shiki.style/guide/theme-colors#color-replacements
    */
-  colorReplacements?: CodeToHastOptions['colorReplacements']
-  /**
-   * Configure the Shiki instance.
-   */
-  shikiSetup?: (shiki: Highlighter) => void | Promise<void>
+  colorReplacements?: ColorReplacements
 
   /* ==================== Code Blocks ==================== */
 
@@ -229,8 +220,8 @@ export interface MarkdownOptions extends MarkdownItAsyncOptions {
   /**
    * Options for `@mdit/plugin-attrs`. Set to `false` to disable. The `fence`
    * rule is off by default so that curly attributes never consume code block
-   * meta (e.g. line highlighting) - add classes to code blocks using shiki
-   * transformers instead.
+   * meta (e.g. line highlighting) - add classes to code blocks using
+   * `codeTransformers` instead.
    * @see https://mdit-plugins.github.io/attrs.html
    */
   attrs?: MarkdownItAttrsOptions | boolean
