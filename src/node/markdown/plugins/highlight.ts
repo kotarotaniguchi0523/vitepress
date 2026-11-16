@@ -5,7 +5,6 @@ import {
   transformerNotationFocus,
   transformerNotationHighlight
 } from '@shikijs/transformers'
-import { customAlphabet } from 'nanoid'
 import c from 'picocolors'
 import type { BundledLanguage, ShikiTransformer } from 'shiki'
 import { createHighlighter, guessEmbeddedLanguages, isSpecialLang } from 'shiki'
@@ -13,39 +12,21 @@ import type { Logger } from 'vite'
 
 import { isShell } from '../../shared'
 import type { MarkdownOptions, ThemeOptions } from '../markdown'
+import {
+  createMustacheGuard,
+  DEFAULT_COLOR_REPLACEMENTS,
+  disableShellSymbolSelect,
+  isDualTheme,
+  normalizeLangAlias,
+  parseFenceInfo
+} from './highlightShared'
 
-const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz', 10)
-
-/**
- * Prevents the leading '$' symbol etc from being selectable/copyable. Also
- * normalizes its syntax so there's no leading spaces, and only a single
- * trailing space.
- *
- * NOTE: Any changes to this function may also need to update
- * `src/client/app/composables/copyCode.ts`
- */
 function transformerDisableShellSymbolSelect(): ShikiTransformer {
   return {
     name: 'vitepress:disable-shell-symbol-select',
     tokens(tokensByLine) {
       if (!isShell(this.options.lang)) return
-
-      for (const tokens of tokensByLine) {
-        if (tokens.length < 2) continue
-
-        // The first token should only be a symbol token
-        const firstTokenText = tokens[0].content.trim()
-        if (firstTokenText !== '$' && firstTokenText !== '>') continue
-
-        // The second token must have a leading space (separates the symbol)
-        if (tokens[1].content[0] !== ' ') continue
-
-        tokens[0].content = firstTokenText + ' '
-        tokens[0].htmlStyle ??= {}
-        tokens[0].htmlStyle['user-select'] = 'none'
-        tokens[0].htmlStyle['-webkit-user-select'] = 'none'
-        tokens[1].content = tokens[1].content.slice(1)
-      }
+      disableShellSymbolSelect(tokensByLine, (token) => token.htmlStyle ?? {})
     }
   }
 }
@@ -62,16 +43,10 @@ export async function highlight(
     codeTransformers: userTransformers = []
   } = options
 
-  const langAlias = Object.fromEntries(
-    Object.entries(options.languageAlias || {}) //
-      .map(([k, v]) => [k.toLowerCase(), v])
-  )
+  const langAlias = normalizeLangAlias(options.languageAlias)
 
   const highlighter = await createHighlighter({
-    themes:
-      typeof theme === 'object' && 'light' in theme && 'dark' in theme
-        ? [theme.light, theme.dark]
-        : [theme],
+    themes: isDualTheme(theme) ? [theme.light, theme.dark] : [theme],
     langs: [...(options.languages || []), ...Object.values(langAlias)],
     langAlias
   })
@@ -96,24 +71,12 @@ export async function highlight(
     }
   ]
 
-  // keep in sync with ./preWrapper.ts#extractLang
-  const langRE = /^[a-zA-Z0-9-_]+/
-  const vueRE = /-vue$/
-
   return [
     async (str, lang, attrs) => {
-      const match = langRE.exec(lang)
-      if (match) {
-        const orig = lang
-        lang = match[0].toLowerCase()
-        attrs = orig.slice(lang.length).replace(/(?<!=)\{/g, ' {') + ' ' + attrs
-        attrs = attrs.trim().replace(/\s+/g, ' ')
-      }
-
-      lang ||= defaultLang
-
-      const vPre = !vueRE.test(lang)
-      if (!vPre) lang = lang.slice(0, -4)
+      const info = parseFenceInfo(lang, attrs, defaultLang)
+      const { vPre } = info
+      lang = info.lang
+      attrs = info.attrs
 
       try {
         // https://github.com/shikijs/shiki/issues/952
@@ -132,28 +95,9 @@ export async function highlight(
         lang = defaultLang
       }
 
-      const mustaches = new Map<string, string>()
+      const mustaches = createMustacheGuard(vPre)
 
-      const removeMustache = (s: string) => {
-        if (vPre) return s
-        return s.replace(/\{\{.*?\}\}/g, (match) => {
-          let marker = mustaches.get(match)
-          if (!marker) {
-            marker = nanoid()
-            mustaches.set(match, marker)
-          }
-          return marker
-        })
-      }
-
-      const restoreMustache = (s: string) => {
-        mustaches.forEach((marker, match) => {
-          s = s.replaceAll(marker, match)
-        })
-        return s
-      }
-
-      str = removeMustache(str).trimEnd()
+      str = mustaches.remove(str).trimEnd()
 
       const embeddedLang = guessEmbeddedLanguages(str, lang, highlighter)
       await highlighter.loadLanguage(...(embeddedLang as BundledLanguage[]))
@@ -192,34 +136,16 @@ export async function highlight(
           ...userTransformers
         ],
         meta: { __raw: attrs },
-        ...(typeof theme === 'object' && 'light' in theme && 'dark' in theme
+        ...(isDualTheme(theme)
           ? { themes: theme, defaultColor: false }
           : { theme }),
         colorReplacements: {
-          'github-light': {
-            '#959da5': '#6c676f',
-            '#28a745': '#0e790b',
-            '#b08800': '#846312',
-            '#e36209': '#c13617',
-            '#3192aa': '#05728b',
-            '#d73a49': '#c62739',
-            '#22863a': '#11782a',
-            '#6a737d': '#62687b',
-            '#1b7c83': '#06747a',
-            '#0366d6': '#0663d0',
-            '#cb2431': '#c82430'
-          },
-          'github-dark': {
-            '#586069': '#5b93a3',
-            '#6a737d': '#818e99',
-            '#ea4a5a': '#ef5564',
-            '#2188ff': '#268bf9'
-          },
+          ...DEFAULT_COLOR_REPLACEMENTS,
           ...options.colorReplacements
         }
       })
 
-      return restoreMustache(highlighted)
+      return mustaches.restore(highlighted)
     },
     highlighter.dispose
   ]

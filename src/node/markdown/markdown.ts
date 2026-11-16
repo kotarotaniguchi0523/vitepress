@@ -38,6 +38,7 @@ import type {
   ShikiTransformer,
   ThemeRegistrationAny
 } from 'shiki'
+import c from 'picocolors'
 import type { Logger } from 'vite'
 
 import type {
@@ -53,6 +54,10 @@ import {
 } from './plugins/containers'
 import { eagerFrontmatterInterpolationPlugin } from './plugins/eagerFrontmatterInterpolation'
 import { highlight as createHighlighter } from './plugins/highlight'
+import {
+  highlightWithPierre,
+  unsupportedOptions
+} from './plugins/highlightPierre'
 import { imagePlugin, type Options as ImageOptions } from './plugins/image'
 import {
   includePlugin,
@@ -73,13 +78,28 @@ export type { Header } from '../shared'
 // not exported from @mdit/plugin-emoji, so derive it from the plugin signature
 type EmojiPluginOptions = NonNullable<Parameters<typeof emojiPlugin>[1]>
 
-export type ThemeOptions =
-  | ThemeRegistrationAny
-  | BuiltinTheme
-  | {
-      light: ThemeRegistrationAny | BuiltinTheme
-      dark: ThemeRegistrationAny | BuiltinTheme
-    }
+/**
+ * A Zed-compatible theme, which the `highlights` highlighter takes in place
+ * of a TextMate theme.
+ */
+export interface HighlightsTheme {
+  name: string
+  appearance: string
+  style: Record<string, unknown>
+  cssVariables?: unknown
+}
+
+/** A Zed-compatible collection of themes. The first one is used. */
+export interface HighlightsThemeFamily {
+  name?: string
+  author?: string
+  themes: readonly HighlightsTheme[]
+}
+
+type CodeTheme =
+  ThemeRegistrationAny | BuiltinTheme | HighlightsTheme | HighlightsThemeFamily
+
+export type ThemeOptions = CodeTheme | { light: CodeTheme; dark: CodeTheme }
 
 // highlight is marked as any to avoid type conflicts with plugins expecting
 // regular markdown-it which has sync highlight function. Such plugins will fail
@@ -118,6 +138,23 @@ export interface MarkdownOptions extends MarkdownItAsyncOptions {
 
   /* ==================== Syntax Highlighting ==================== */
 
+  /**
+   * The syntax highlighter for code blocks.
+   *
+   * - `'shiki'` uses [Shiki](https://shiki.style). It supports every option
+   *   below.
+   * - `'highlights'` uses [`@pierre/highlights`](https://diffs.com/highlights),
+   *   which is much faster. Install the `@pierre/highlights` package to use
+   *   it. It has its own built-in languages and renders any other language
+   *   as plain text. VitePress uses Shiki instead when the config has
+   *   `shikiSetup`, a custom grammar in `languages`, a TextMate theme object
+   *   in `theme`, or a transformer in `codeTransformers` with a hook that is
+   *   given the syntax tree.
+   *
+   * @default 'shiki'
+   * @experimental
+   */
+  highlighter?: 'shiki' | 'highlights'
   /**
    * Custom theme for syntax highlighting.
    *
@@ -378,6 +415,25 @@ export function disposeMdItInstance() {
   }
 }
 
+function createCodeHighlighter(
+  theme: ThemeOptions,
+  options: MarkdownOptions,
+  logger: Pick<Logger, 'warn'>
+) {
+  if (options.highlighter === 'highlights') {
+    const unsupported = unsupportedOptions(theme, options)
+    if (unsupported.length === 0) {
+      return highlightWithPierre(theme, options, logger)
+    }
+    logger.warn(
+      c.yellow(
+        `\nThe \`highlights\` code highlighter does not support ${unsupported.join(' and ')}. Using Shiki instead.`
+      )
+    )
+  }
+  return createHighlighter(theme, options, logger)
+}
+
 /**
  * @experimental
  */
@@ -400,7 +456,7 @@ export async function createMarkdownRenderer(
 
   const [highlight, dispose] = options.highlight
     ? [options.highlight, () => {}]
-    : await createHighlighter(theme, options, logger)
+    : await createCodeHighlighter(theme, options, logger)
 
   _disposeHighlighter = dispose
 

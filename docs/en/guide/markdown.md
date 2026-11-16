@@ -493,6 +493,30 @@ A [list of valid languages](https://shiki.style/languages) is available on Shiki
 
 You may also customize syntax highlight theme, configure language aliases, and set custom language labels in app config. Please see [`markdown` options](../reference/site-config#markdown) for more details.
 
+### Faster Highlighting <Badge type="warning" text="experimental" />
+
+Shiki is the default highlighter. You can highlight with [`@pierre/highlights`](https://diffs.com/highlights) instead, which is much faster and renders the same markup. Install the package and set the `highlighter` option:
+
+```sh
+npm add -D @pierre/highlights
+```
+
+```js [.vitepress/config.js]
+export default {
+  markdown: {
+    highlighter: 'highlights'
+  }
+}
+```
+
+Line highlighting, focus, colored diffs, errors and warnings, line numbers, `languageAlias`, `colorReplacements` and the bundled Shiki themes work the same way. Keep the following differences in mind:
+
+- It has its own set of built-in languages. A code block in any other language renders as plain text and VitePress prints a warning.
+- Some tokens get a different color than with Shiki, because the two highlighters classify code differently.
+- VitePress uses Shiki instead, and prints a warning, when the config has `shikiSetup`, a custom grammar in `languages`, a TextMate theme object in `theme`, or a transformer in `codeTransformers` with a hook that is given the syntax tree (`root`, `pre`, `code`, `line` or `span`).
+- The other transformer hooks, `preprocess`, `tokens` and `postprocess`, run as they do with Shiki. They cannot reach the Shiki highlighter through `this`, and they cannot ask for decorations through `options`: the build stops with an error if one tries.
+- A custom theme is a [Zed-compatible theme object](https://zed.dev/docs/extensions/themes) in place of a TextMate theme.
+
 ## Line Highlighting in Code Blocks
 
 **Input**
